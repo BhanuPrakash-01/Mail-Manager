@@ -1,0 +1,23 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/**/*.py[cod]
+
+# Environment variables
+.env
+backend/.env
+
+# Python tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
