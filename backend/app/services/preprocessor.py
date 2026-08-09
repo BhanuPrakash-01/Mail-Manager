@@ -80,7 +80,7 @@ class EmailPreprocessor:
 
         text = self.clean_html(text)
         text = self.remove_quoted_replies(text)
-        text = self.remove_signature(text)
+        # text = self.remove_signature(text)  # Disabled to preserve Company Names in signatures
         text = self.normalize_whitespace(text)
 
         return text

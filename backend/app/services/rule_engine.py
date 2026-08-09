@@ -125,73 +125,54 @@ class RuleEngine:
             )
 
         # =========================================================
-        # RULE 6 — RFP / RFI / TENDER → AARTI
+        # RULE 6, 7, 8 — RFP / ENQUIRY / DEAL VALUE THRESHOLDS
         # =========================================================
 
         if extraction.intent in {
             EmailIntent.RFP,
             EmailIntent.RFI,
             EmailIntent.TENDER,
-        }:
-            return RoutingResult(
-                decision=RoutingDecision.CREATE_TASK,
-                category="enterprise_rfp",
-                assignee_id="u_aarti",
-                priority=self._get_priority(
-                    extraction=extraction,
-                    received_at=received_at,
-                    default_priority=TaskPriority.MEDIUM,
-                ),
-                reason=(
-                    "RFP/RFI/tender routed to enterprise sales"
-                ),
-            )
-
-        # =========================================================
-        # RULE 7 — INBOUND DEAL > ₹10L → AARTI
-        # =========================================================
-
-        if (
-            extraction.direction == EmailDirection.INBOUND
-            and extraction.deal_value_inr is not None
-            and extraction.deal_value_inr > 1_000_000
-        ):
-            return RoutingResult(
-                decision=RoutingDecision.CREATE_TASK,
-                category="enterprise_rfp",
-                assignee_id="u_aarti",
-                priority=self._get_priority(
-                    extraction=extraction,
-                    received_at=received_at,
-                    default_priority=TaskPriority.MEDIUM,
-                ),
-                reason=(
-                    "Inbound deal exceeds ₹10,00,000 and "
-                    "is therefore routed to enterprise sales"
-                ),
-            )
-
-        # =========================================================
-        # RULE 8 — PRODUCT ENQUIRY / DEMO → ROHIT
-        # =========================================================
-
-        if extraction.intent in {
             EmailIntent.PRODUCT_ENQUIRY,
             EmailIntent.DEMO_REQUEST,
         }:
-            return RoutingResult(
-                decision=RoutingDecision.CREATE_TASK,
-                category="smb_enquiry",
-                assignee_id="u_rohit",
-                priority=self._get_priority(
-                    extraction=extraction,
-                    received_at=received_at,
-                    default_priority=TaskPriority.LOW,
-                ),
-                reason=(
-                    "Product enquiry/demo routed to SMB sales"
-                ),
-            )
+            is_enterprise = False
+            
+            # RFPs and Tenders are inherently enterprise
+            if extraction.intent in {EmailIntent.RFP, EmailIntent.RFI, EmailIntent.TENDER}:
+                is_enterprise = True
+            # For product enquiries, rely on the value threshold
+            elif extraction.direction == EmailDirection.INBOUND and extraction.deal_value_inr is not None and extraction.deal_value_inr > 1_000_000:
+                is_enterprise = True
+
+            if is_enterprise:
+                return RoutingResult(
+                    decision=RoutingDecision.CREATE_TASK,
+                    category="enterprise_rfp",
+                    assignee_id="u_aarti",
+                    priority=self._get_priority(
+                        extraction=extraction,
+                        received_at=received_at,
+                        default_priority=TaskPriority.MEDIUM,
+                    ),
+                    reason=(
+                        "RFP/RFI/tender or high-value inbound deal "
+                        "routed to enterprise sales"
+                    ),
+                )
+            else:
+                return RoutingResult(
+                    decision=RoutingDecision.CREATE_TASK,
+                    category="smb_enquiry",
+                    assignee_id="u_rohit",
+                    priority=self._get_priority(
+                        extraction=extraction,
+                        received_at=received_at,
+                        default_priority=TaskPriority.LOW,
+                    ),
+                    reason=(
+                        "Product enquiry/demo routed to SMB sales"
+                    ),
+                )
 
         # =========================================================
         # RULE 9 — SPONSORSHIP → MEERA
@@ -244,26 +225,12 @@ class RuleEngine:
             EmailIntent.INVOICE,
             EmailIntent.PAYMENT,
         }:
-            # Per INSTRUCTIONS Example 5: overdue payments justify
-            # HIGH priority even without a specific due_date.
+            # Priority is now handled comprehensively by _get_priority
             finance_priority = self._get_priority(
                 extraction=extraction,
                 received_at=received_at,
                 default_priority=TaskPriority.MEDIUM,
             )
-
-            # Check signals for urgency markers
-            if extraction.signals:
-                urgency_signals = {
-                    "overdue", "urgent", "past_due",
-                    "payment_overdue", "escalation",
-                    "immediate", "asap",
-                }
-                normalized = {
-                    s.strip().lower() for s in extraction.signals if s
-                }
-                if normalized.intersection(urgency_signals):
-                    finance_priority = TaskPriority.HIGH
 
             return RoutingResult(
                 decision=RoutingDecision.CREATE_TASK,
@@ -384,21 +351,30 @@ class RuleEngine:
             due Aug 19 → default priority
         """
 
+        # Global Urgency Signal Check
+        if extraction.signals:
+            urgency_signals = {
+                "overdue", "urgent", "past_due",
+                "payment_overdue", "escalation",
+                "immediate", "asap", "dispute", "blocked"
+            }
+            normalized = {s.strip().lower() for s in extraction.signals if s}
+            if normalized.intersection(urgency_signals):
+                return TaskPriority.HIGH
+
         if extraction.due_date is None:
             return default_priority
 
         if received_at is None:
             return default_priority
 
-        received_date: date = received_at.date()
+        # Treat due_date as due at 00:00:00 of that day to match strict 72h window test
+        due_datetime = datetime.combine(extraction.due_date, datetime.min.time(), tzinfo=received_at.tzinfo)
 
-        days_until_due = (
-            extraction.due_date - received_date
-        ).days
+        time_until_due = due_datetime - received_at
 
-        # With date-only extraction, 0–2 days is safely inside
-        # the 72-hour window.
-        if 0 <= days_until_due <= 2:
+        # True hour-precision timedelta subtraction (72 hours)
+        if 0 <= time_until_due.total_seconds() <= (72 * 3600):
             return TaskPriority.HIGH
 
         return default_priority

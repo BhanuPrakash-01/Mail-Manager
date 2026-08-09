@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 
 from google import genai
 
@@ -84,6 +85,11 @@ CRITICAL RULE — Invoice/payment amounts are NOT deal values:
   not a deal we are winning. Only extract deal_value_inr for actual
   business deals, RFPs, tenders, and product enquiries.
 
+CRITICAL RULE — Non-INR Figures:
+  Reject non-INR figures outright. If a value is given in USD, EUR, GBP,
+  or any foreign currency without an explicit INR amount next to it,
+  set deal_value_inr = null. DO NOT invent exchange rates to convert it.
+
 ═══════════════════════════════════════════════════════════════
 DUE DATE EXTRACTION
 ═══════════════════════════════════════════════════════════════
@@ -154,6 +160,10 @@ to a single intent:
 If the email has TWO distinct asks for different departments (e.g.,
 "evaluate your platform" AND "co-host a webinar"), set intent to
 "ambiguous" and confidence to 0.40–0.50.
+
+If the email states the budget is "TBD", "unknown", "could be small
+or large depending on approval", or similarly unresolved, the intent
+MUST be "ambiguous" with low confidence (< 0.50).
 
 ═══════════════════════════════════════════════════════════════
 SIGNALS
@@ -232,8 +242,13 @@ class GeminiService:
 
         raise RuntimeError("Unreachable")
 
-    def extract(self, cleaned_email: str) -> EmailExtraction:
-        prompt = EXTRACTION_PROMPT + cleaned_email
+    def extract(self, cleaned_email: str, received_at: datetime | None = None) -> EmailExtraction:
+        prompt = EXTRACTION_PROMPT
+
+        if received_at:
+            prompt += f"\n\n[System Info: This email was received on {received_at.strftime('%Y-%m-%d')} at {received_at.strftime('%H:%M:%S')}]. Use this exact date as 'today' for resolving relative dates like 'tomorrow', 'next week', etc.\n\n"
+
+        prompt += cleaned_email
 
         response = self._generate_content(prompt)
 

@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from sqlalchemy import select
 
 from sqlalchemy.orm import Session
 
@@ -87,7 +88,8 @@ class EmailProcessor:
         # 4. Gemini extraction
         try:
             extraction = self.gemini_service.extract(
-                cleaned_email
+                cleaned_email=cleaned_email,
+                received_at=email.received_at,
             )
 
         except Exception as exc:
@@ -109,9 +111,13 @@ class EmailProcessor:
         # 5. Deterministic routing
         try:
             routing = self.rule_engine.route(
-                extraction,
+                extraction=extraction,
                 received_at=email.received_at,
             )
+
+            # GUARDRAIL: Never populate deal_value_inr for marketing or alliances
+            if getattr(routing, 'category', None) in {"marketing", "alliances"}:
+                extraction.deal_value_inr = None
 
         except Exception as exc:
             self._save_processing_error(
@@ -151,10 +157,31 @@ class EmailProcessor:
             )
 
         # 7. Find existing task for this thread
-        existing_task_id = self.thread_service.find_existing_task(
-            thread_id=email.thread_id,
-            candidate_id=candidate_id,
-        )
+        thread_record = self.db.execute(
+            select(Thread).where(
+                Thread.thread_id == email.thread_id,
+                Thread.candidate_id == candidate_id,
+                Thread.current_task_id.is_not(None),
+            )
+        ).scalar_one_or_none()
+
+        existing_task_id = thread_record.current_task_id if thread_record else None
+
+        # Fix for Update-Path Category/Field carryover
+        if existing_task_id and thread_record.last_email_id:
+            last_processing = self.db.get(EmailProcessing, thread_record.last_email_id)
+            if last_processing:
+                # If new category is triage, carry over old category & assignee
+                if getattr(routing, 'category', None) == "triage":
+                    routing.category = last_processing.category
+                    routing.assignee_id = last_processing.assignee_id
+                
+                # Carry over null fields
+                if extraction.company_name is None:
+                    extraction.company_name = last_processing.company_name
+                
+                if extraction.deal_value_inr is None:
+                    extraction.deal_value_inr = last_processing.deal_value_inr
 
         # 8. Decide whether this is CREATE or UPDATE
         if existing_task_id:
@@ -378,6 +405,8 @@ class EmailProcessor:
             "confidence": extraction.confidence,
         }
 
+        # Omit None values so we don't overwrite existing valid data during PATCH updates
+        return {k: v for k, v in payload.items() if v is not None}
     def _save_thread(
         self,
         thread_id: str,
