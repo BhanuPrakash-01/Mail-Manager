@@ -1,8 +1,8 @@
 # Sales Inbox Task Router
 
 **Candidate ID**: `bhanuprakashaleti06@gmail.com`
-**Backend URL**: `[YOUR_DEPLOYED_BACKEND_URL]`
-**Dashboard URL**: `[YOUR_DEPLOYED_FRONTEND_URL]`
+**Backend URL**: `https://mail-manager-production-b1a7.up.railway.app`
+**Dashboard URL**: `https://mail-manager-nine.vercel.app`
 
 This project automates the routing of sales emails into structured tasks using Gemini 3.1 Flash. It includes a resilient extraction pipeline, an idempotent ingest layer, a React dashboard, and a natural language chat interface grounded purely in the structured database.
 
