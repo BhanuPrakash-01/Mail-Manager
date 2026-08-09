@@ -22,7 +22,7 @@ export default function UploadPanel({ onFileLoaded, onSubmit, isProcessing, prev
 
   const handleLoadSample = async () => {
     try {
-      const response = await fetch('/inbox_test_250.json');
+      const response = await fetch('/inbox_test_150.json');
       const data = await response.json();
       onFileLoaded(Array.isArray(data) ? data : [data]);
     } catch (err) {
