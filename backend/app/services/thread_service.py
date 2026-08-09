@@ -15,13 +15,10 @@ class ThreadService:
         candidate_id: str,
     ) -> str | None:
 
-        statement = (
-            select(Thread.task_id)
-            .where(
-                Thread.thread_id == thread_id,
-                Thread.candidate_id == candidate_id,
-                Thread.task_id.is_not(None),
-            )
+        statement = select(Thread.current_task_id).where(
+            Thread.thread_id == thread_id,
+            Thread.candidate_id == candidate_id,
+            Thread.current_task_id.is_not(None),
         )
 
         return self.db.execute(statement).scalar_one_or_none()

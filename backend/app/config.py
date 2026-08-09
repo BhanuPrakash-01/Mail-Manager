@@ -12,7 +12,6 @@ class Settings(BaseSettings):
     database_url: str
 
     task_api_base_url: str
-    candidate_id: str
     task_api_timeout_seconds: float = 10.0
 
     frontend_url: str = "http://localhost:5173"

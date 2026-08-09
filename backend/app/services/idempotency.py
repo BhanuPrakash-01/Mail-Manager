@@ -25,7 +25,7 @@ class IdempotencyService:
             .where(
                 EmailProcessing.email_id == email_id,
                 Email.candidate_id == candidate_id,
-                EmailProcessing.status == "completed",
+                EmailProcessing.processing_status == "completed",
             )
         )
 

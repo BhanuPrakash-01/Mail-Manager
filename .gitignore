@@ -18,6 +18,7 @@ frontend/dist/
 
 # OS
 .DS_Store
+*.log
 
 # IDE
 .vscode/

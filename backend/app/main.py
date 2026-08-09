@@ -1,79 +1,110 @@
+import uuid
+
 from fastapi import Depends, FastAPI
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.db.session import engine, get_db
 from app.models.base import Base
-import app.models
-from app.schemas.email import EmailInput
-from app.services.preprocessor import EmailPreprocessor
-from app.services.gemini_service import GeminiService
 
-Base.metadata.create_all(bind=engine)
+from app.models.email import Email
+from app.models.email_processing import EmailProcessing
+from app.models.processing_run import ProcessingRun
+from app.models.thread import Thread
+
+from app.schemas.ingest import IngestRequest, IngestResponse
+
+from app.services.email_processor import EmailProcessor
+from app.services.gemini_service import GeminiService
+from app.services.preprocessor import EmailPreprocessor
+from app.services.processing_run import ProcessingRunService
+from app.services.rule_engine import RuleEngine
+from app.services.task_api import TaskAPIClient
 
 
 app = FastAPI(
-    title=settings.app_name,
-    description="AI-powered sales inbox task routing system",
-    version="1.0.0",
+    title="Sales Inbox Task Router",
 )
 
 
-@app.get("/")
-def root():
-    return {
-        "service": "sales-inbox-router",
-        "status": "running",
-    }
+@app.on_event("startup")
+def create_tables():
+    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/health")
-def health_check():
+def health():
     return {
-        "status": "healthy",
-        "environment": settings.environment,
+        "status": "ok",
     }
 
 
-@app.get("/health/db")
-def database_health_check(db: Session = Depends(get_db)):
-    db.execute(text("SELECT 1"))
+@app.post(
+    "/ingest",
+    response_model=IngestResponse,
+)
+def ingest(
+    request: IngestRequest,
+    db: Session = Depends(get_db),
+):
+    candidate_id = request.candidate_id.strip().lower()
 
-    return {
-        "database": "connected",
-    }
+    run_id = str(uuid.uuid4())
 
-@app.post("/api/test-email")
-def test_email(email: EmailInput):
-    return {
-        "email_id": email.email_id,
-        "thread_id": email.thread_id,
-        "received_at": email.received_at.isoformat(),
-        "is_reply": email.is_reply,
-    }
+    run_service = ProcessingRunService(db)
 
+    run = run_service.start(
+        run_id=run_id,
+        candidate_id=candidate_id,
+    )
 
-@app.post("/api/test-preprocess")
-def test_preprocess(email: EmailInput):
-    preprocessor = EmailPreprocessor()
+    processor = EmailProcessor(
+        db=db,
+        preprocessor=EmailPreprocessor(),
+        gemini_service=GeminiService(),
+        rule_engine=RuleEngine(),
+        task_api=TaskAPIClient(),
+    )
 
-    cleaned_text = preprocessor.preprocess(email)
+    try:
+        for email in request.emails:
+            try:
+                result = processor.process(
+                    email=email,
+                    candidate_id=candidate_id,
+                    run_id=run_id,
+                )
 
-    return {
-        "email_id": email.email_id,
-        "original_length": len(email.body),
-        "cleaned_length": len(cleaned_text),
-        "cleaned_body": cleaned_text,
-    }
+                run_service.record_result(
+                    run=run,
+                    decision=result.decision,
+                    status=result.status.value,
+                )
 
-@app.post("/api/test-gemini")
-def test_gemini(email: EmailInput):
-    preprocessor = EmailPreprocessor()
-    gemini = GeminiService()
+            except Exception as exc:
+                run.processed_count += 1
+                run.error_count += 1
 
-    cleaned_text = preprocessor.preprocess(email)
+                print(
+                    f"Error processing email "
+                    f"{email.email_id}: {type(exc).__name__}: {exc}"
+                )
 
-    extraction = gemini.extract(cleaned_text)
+                db.flush()
 
-    return extraction.model_dump(mode="json")
+        run_service.complete(run)
+
+        db.commit()
+
+        return IngestResponse(
+            run_id=run.run_id,
+            status=run.status,
+            processed_count=run.processed_count,
+            created_count=run.created_count,
+            updated_count=run.updated_count,
+            skipped_count=run.skipped_count,
+            error_count=run.error_count,
+        )
+
+    except Exception:
+        db.rollback()
+        raise

@@ -11,7 +11,6 @@ class TaskAPIClient:
 
     def __init__(self):
         self.base_url = settings.task_api_base_url.rstrip("/")
-        self.candidate_id = settings.candidate_id
 
         self.timeout = httpx.Timeout(
             settings.task_api_timeout_seconds
@@ -41,13 +40,14 @@ class TaskAPIClient:
 
     def get_tasks(
         self,
+        candidate_id: str,
         limit: int = 100,
     ) -> list[dict]:
         try:
             response = httpx.get(
                 f"{self.base_url}/tasks",
                 params={
-                    "candidate_id": self.candidate_id,
+                    "candidate_id": candidate_id,
                     "limit": limit,
                 },
                 headers=self._headers(),
