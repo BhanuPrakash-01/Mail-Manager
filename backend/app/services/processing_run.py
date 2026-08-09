@@ -20,13 +20,18 @@ class ProcessingRunService:
             run_id=run_id,
             candidate_id=candidate_id,
             started_at=datetime.now(timezone.utc),
-            status="processing",
+            status="queued",
         )
 
         self.db.add(run)
         self.db.flush()
 
         return run
+
+    def get(self, run_id: str) -> ProcessingRun | None:
+        from sqlalchemy import select
+        stmt = select(ProcessingRun).where(ProcessingRun.run_id == run_id)
+        return self.db.execute(stmt).scalar_one_or_none()
 
     def complete(
         self,

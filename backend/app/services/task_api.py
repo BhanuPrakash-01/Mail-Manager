@@ -105,3 +105,24 @@ class TaskAPIClient:
             raise TaskAPIError(
                 f"Failed to update task {task_id}: {exc}"
             ) from exc
+
+
+def get_task_api_client():
+    """
+    Factory: returns MockTaskAPIClient when the Task API URL
+    is a placeholder, otherwise returns the real HTTP client.
+    """
+    from app.services.mock_task_api import MockTaskAPIClient
+
+    url = settings.task_api_base_url.strip()
+    placeholder_values = {
+        "", "your-task-api-url", "mock", "placeholder",
+        "http://localhost:0", "none",
+    }
+
+    if url.lower() in placeholder_values:
+        print("[TaskAPI] Using MOCK Task API (in-memory)")
+        return MockTaskAPIClient()
+
+    print(f"[TaskAPI] Using REAL Task API at {url}")
+    return TaskAPIClient()

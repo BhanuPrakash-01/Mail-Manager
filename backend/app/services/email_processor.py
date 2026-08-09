@@ -60,6 +60,10 @@ class EmailProcessor:
             candidate_id=candidate_id,
         )
 
+        # Commit early so the DB connection is not held open
+        # during the potentially long Gemini API call.
+        self.db.commit()
+
         # 3. Preprocess
         try:
             cleaned_email = self.preprocessor.preprocess(email)
@@ -126,7 +130,7 @@ class EmailProcessor:
             )
 
         # 6. SKIP decision
-        if routing.decision.value == "skip":
+        if getattr(routing.decision, 'value', routing.decision) == "skip":
             processing = self._save_processing_result(
                 email=email,
                 extraction=extraction,
@@ -192,7 +196,7 @@ class EmailProcessor:
                     payload,
                 )
 
-                task_id = task_response.get("id")
+                task_id = task_response.get("task_id") or task_response.get("id")
 
                 if not task_id:
                     raise TaskAPIError(
@@ -243,6 +247,10 @@ class EmailProcessor:
         candidate_id: str,
     ) -> None:
 
+        existing_email = self.db.get(Email, email.email_id)
+        if existing_email:
+            return
+
         email_record = Email(
             email_id=email.email_id,
             thread_id=email.thread_id,
@@ -251,6 +259,7 @@ class EmailProcessor:
             from_name=email.from_name,
             from_email=email.from_email,
             subject=email.subject,
+            body=email.body,
             message_index=email.message_index,
             is_reply=email.message_index > 0,
         )
@@ -279,7 +288,7 @@ class EmailProcessor:
             processed_at=datetime.now(timezone.utc),
         )
 
-        self.db.add(processing)
+        self.db.merge(processing)
         self.db.flush()
 
     def _save_processing_result(
@@ -297,13 +306,13 @@ class EmailProcessor:
             run_id=run_id,
             decision=decision,
             category=(
-                routing.category.value
+                routing.category
                 if routing.category is not None
                 else None
             ),
             assignee_id=routing.assignee_id,
             priority=(
-                routing.priority.value
+                getattr(routing.priority, 'value', routing.priority)
                 if routing.priority is not None
                 else None
             ),
@@ -315,7 +324,7 @@ class EmailProcessor:
             processing_status=processing_status,
         )
 
-        self.db.add(processing)
+        processing = self.db.merge(processing)
         self.db.flush()
 
         return processing
@@ -327,21 +336,35 @@ class EmailProcessor:
         routing,
         candidate_id: str,
     ) -> dict:
+        # Build a concise title from subject
+        title = email.subject or "Untitled Email"
+
+        # Build description from routing reason + extraction context
+        desc_parts = []
+        if routing.reason:
+            desc_parts.append(routing.reason)
+        if extraction.company_name:
+            desc_parts.append(f"Company: {extraction.company_name}")
+        if extraction.due_date:
+            desc_parts.append(f"Due: {extraction.due_date.isoformat()}")
+        if extraction.deal_value_inr:
+            desc_parts.append(f"Deal value: ₹{extraction.deal_value_inr:,}")
+        description = ". ".join(desc_parts) if desc_parts else None
 
         return {
             "candidate_id": candidate_id,
             "source_email_id": email.email_id,
             "thread_id": email.thread_id,
-            "title": email.subject,
-            "description": email.body,
+            "title": title,
+            "description": description,
             "assignee_id": routing.assignee_id,
             "category": (
-                routing.category.value
+                getattr(routing.category, 'value', routing.category)
                 if routing.category is not None
                 else None
             ),
             "priority": (
-                routing.priority.value
+                getattr(routing.priority, 'value', routing.priority)
                 if routing.priority is not None
                 else None
             ),

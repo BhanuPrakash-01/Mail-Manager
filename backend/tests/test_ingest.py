@@ -70,11 +70,10 @@ def build_routing(
 ):
     routing = Mock()
 
-    routing.decision.value = decision
-
-    routing.category.value = "product"
+    routing.decision = decision
+    routing.category = "product"
     routing.assignee_id = "u_rohit"
-    routing.priority.value = "medium"
+    routing.priority = "medium"
     routing.reason = "Product enquiry"
 
     return routing
@@ -129,7 +128,7 @@ def test_ingest_creates_task_and_persists_data(
 
     mock_task_api = Mock()
     mock_task_api.create_task.return_value = {
-        "id": "task_integration_001"
+        "task_id": "task_integration_001"
     }
 
     monkeypatch.setattr(
@@ -143,7 +142,7 @@ def test_ingest_creates_task_and_persists_data(
     )
 
     monkeypatch.setattr(
-        "app.main.TaskAPIClient",
+        "app.main.get_task_api_client",
         lambda: mock_task_api,
     )
 
@@ -169,12 +168,19 @@ def test_ingest_creates_task_and_persists_data(
 
         data = response.json()
 
-        assert data["status"] == "completed"
-        assert data["processed_count"] == 1
-        assert data["created_count"] == 1
-        assert data["updated_count"] == 0
-        assert data["skipped_count"] == 0
-        assert data["error_count"] == 0
+        assert data["status"] == "queued"
+        run_id = data["run_id"]
+
+        get_response = client.get(f"/ingest/{run_id}")
+        assert get_response.status_code == 200
+        get_data = get_response.json()
+
+        assert get_data["status"] == "completed"
+        assert get_data["processed_count"] == 1
+        assert get_data["created_count"] == 1
+        assert get_data["updated_count"] == 0
+        assert get_data["skipped_count"] == 0
+        assert get_data["error_count"] == 0
 
         mock_task_api.create_task.assert_called_once()
 
@@ -250,7 +256,7 @@ def test_ingest_updates_existing_thread_task(
 
     # First request creates the task.
     mock_task_api.create_task.return_value = {
-        "id": "task_thread_001"
+        "task_id": "task_thread_001"
     }
 
     monkeypatch.setattr(
@@ -264,7 +270,7 @@ def test_ingest_updates_existing_thread_task(
     )
 
     monkeypatch.setattr(
-        "app.main.TaskAPIClient",
+        "app.main.get_task_api_client",
         lambda: mock_task_api,
     )
 
@@ -315,11 +321,19 @@ def test_ingest_updates_existing_thread_task(
 
         data = second_response.json()
 
-        assert data["processed_count"] == 1
-        assert data["created_count"] == 0
-        assert data["updated_count"] == 1
-        assert data["skipped_count"] == 0
-        assert data["error_count"] == 0
+        assert data["status"] == "queued"
+        run_id = data["run_id"]
+
+        get_response = client.get(f"/ingest/{run_id}")
+        assert get_response.status_code == 200
+        get_data = get_response.json()
+
+        assert get_data["status"] == "completed"
+        assert get_data["processed_count"] == 1
+        assert get_data["created_count"] == 0
+        assert get_data["updated_count"] == 1
+        assert get_data["skipped_count"] == 0
+        assert get_data["error_count"] == 0
 
         mock_task_api.update_task.assert_called_once()
 
@@ -396,7 +410,7 @@ def test_ingest_skips_email_without_creating_task(
     )
 
     monkeypatch.setattr(
-        "app.main.TaskAPIClient",
+        "app.main.get_task_api_client",
         lambda: mock_task_api,
     )
 
@@ -422,11 +436,19 @@ def test_ingest_skips_email_without_creating_task(
 
         data = response.json()
 
-        assert data["processed_count"] == 1
-        assert data["created_count"] == 0
-        assert data["updated_count"] == 0
-        assert data["skipped_count"] == 1
-        assert data["error_count"] == 0
+        assert data["status"] == "queued"
+        run_id = data["run_id"]
+
+        get_response = client.get(f"/ingest/{run_id}")
+        assert get_response.status_code == 200
+        get_data = get_response.json()
+
+        assert get_data["status"] == "completed"
+        assert get_data["processed_count"] == 1
+        assert get_data["created_count"] == 0
+        assert get_data["updated_count"] == 0
+        assert get_data["skipped_count"] == 1
+        assert get_data["error_count"] == 0
 
         mock_task_api.create_task.assert_not_called()
         mock_task_api.update_task.assert_not_called()

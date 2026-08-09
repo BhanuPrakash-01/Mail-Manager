@@ -244,15 +244,32 @@ class RuleEngine:
             EmailIntent.INVOICE,
             EmailIntent.PAYMENT,
         }:
+            # Per INSTRUCTIONS Example 5: overdue payments justify
+            # HIGH priority even without a specific due_date.
+            finance_priority = self._get_priority(
+                extraction=extraction,
+                received_at=received_at,
+                default_priority=TaskPriority.MEDIUM,
+            )
+
+            # Check signals for urgency markers
+            if extraction.signals:
+                urgency_signals = {
+                    "overdue", "urgent", "past_due",
+                    "payment_overdue", "escalation",
+                    "immediate", "asap",
+                }
+                normalized = {
+                    s.strip().lower() for s in extraction.signals if s
+                }
+                if normalized.intersection(urgency_signals):
+                    finance_priority = TaskPriority.HIGH
+
             return RoutingResult(
                 decision=RoutingDecision.CREATE_TASK,
                 category="finance",
                 assignee_id="u_divya",
-                priority=self._get_priority(
-                    extraction=extraction,
-                    received_at=received_at,
-                    default_priority=TaskPriority.MEDIUM,
-                ),
+                priority=finance_priority,
                 reason=(
                     "Finance-related email routed to finance"
                 ),

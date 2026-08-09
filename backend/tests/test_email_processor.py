@@ -11,8 +11,9 @@ from app.schemas.processing import ProcessingStatus
 def build_processor():
     db = Mock()
 
-    # By default, tests should represent a new thread.
     db.execute.return_value.scalar_one_or_none.return_value = None
+    db.get.return_value = None
+    db.merge.side_effect = lambda x: x
 
     preprocessor = Mock()
     gemini_service = Mock()
@@ -69,10 +70,10 @@ def configure_create_task_flow(
     extraction.confidence = 0.91
 
     routing = Mock()
-    routing.decision.value = "create_task"
-    routing.category.value = "enterprise_rfp"
+    routing.decision = "create_task"
+    routing.category = "enterprise_rfp"
     routing.assignee_id = "u_aarti"
-    routing.priority.value = "high"
+    routing.priority = "high"
     routing.reason = "Enterprise RFP"
 
     preprocessor.preprocess.return_value = cleaned_email
@@ -275,7 +276,7 @@ def test_routing_decision_is_persisted():
     except Exception:
         pass
 
-    saved_processing = db.add.call_args_list[1].args[0]
+    saved_processing = db.merge.call_args_list[0].args[0]
 
     assert saved_processing.email_id == "em_005"
     assert saved_processing.run_id == "run_001"
@@ -311,7 +312,7 @@ def test_skip_decision_does_not_call_task_api():
     extraction.confidence = 0.97
 
     routing = Mock()
-    routing.decision.value = "skip"
+    routing.decision = "skip"
     routing.category = None
     routing.assignee_id = None
     routing.priority = None
@@ -337,7 +338,7 @@ def test_skip_decision_does_not_call_task_api():
     assert result.status == ProcessingStatus.COMPLETED
     assert result.task_id is None
 
-    saved_processing = db.add.call_args_list[1].args[0]
+    saved_processing = db.merge.call_args_list[0].args[0]
 
     assert saved_processing.decision == "skip"
     assert saved_processing.processing_status == "completed"
@@ -371,7 +372,7 @@ def test_new_thread_creates_task():
     )
 
     task_api.create_task.return_value = {
-        "id": "task_123"
+        "task_id": "task_123"
     }
 
     email = build_email(
@@ -399,7 +400,7 @@ def test_new_thread_creates_task():
     assert result.status == ProcessingStatus.COMPLETED
     assert result.task_id == "task_123"
 
-    saved_processing = db.add.call_args_list[1].args[0]
+    saved_processing = db.merge.call_args_list[0].args[0]
 
     assert saved_processing.task_id == "task_123"
     assert saved_processing.processing_status == "completed"
@@ -500,7 +501,7 @@ def test_task_api_failure_is_recorded():
     assert result.error_stage == "task_api"
     assert result.error_message == "Task API unavailable"
 
-    saved_processing = db.add.call_args_list[1].args[0]
+    saved_processing = db.merge.call_args_list[0].args[0]
 
     assert saved_processing.processing_status == "task_api_error"
     assert saved_processing.error_stage == "task_api"
@@ -543,9 +544,10 @@ def test_preprocessor_failure_is_recorded():
     assert result.error_stage == "preprocessor"
     assert result.error_message == "preprocessor failed"
 
-    assert db.add.call_count == 2
+    assert db.add.call_count == 1
+    assert db.merge.call_count == 1
 
-    saved_processing = db.add.call_args_list[1].args[0]
+    saved_processing = db.merge.call_args_list[0].args[0]
 
     assert saved_processing.email_id == "em_error_001"
     assert saved_processing.run_id == "run_001"
@@ -594,9 +596,10 @@ def test_rule_engine_failure_is_recorded():
     assert result.error_stage == "rule_engine"
     assert result.error_message == "rule engine failed"
 
-    assert db.add.call_count == 2
+    assert db.add.call_count == 1
+    assert db.merge.call_count == 1
 
-    saved_processing = db.add.call_args_list[1].args[0]
+    saved_processing = db.merge.call_args_list[0].args[0]
 
     assert saved_processing.email_id == "em_error_003"
     assert saved_processing.run_id == "run_001"
