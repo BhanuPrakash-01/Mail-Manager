@@ -28,7 +28,7 @@ from app.services.task_api import get_task_api_client
 
 
 app = FastAPI(
-    title="Sales Inbox Task Router",
+    title="Mail Manager",
 )
 
 # CORS for React dev server

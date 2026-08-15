@@ -95,7 +95,7 @@ export default function App() {
   return (
     <div className="app-container">
       <header className="app-header">
-        <h1>📬 Sales Inbox Router</h1>
+        <h1>📬 Mail Manager</h1>
         <span className="header-badge">
           {isProcessing ? '⏳ Processing...' : '● Online'}
         </span>

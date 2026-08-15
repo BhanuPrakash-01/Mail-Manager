@@ -1,4 +1,4 @@
-# Sales Inbox Task Router
+# Mail Manager
 
 **Candidate ID**: `bhanuprakashaleti06@gmail.com`
 **Backend URL**: `https://mail-manager-production-b1a7.up.railway.app`

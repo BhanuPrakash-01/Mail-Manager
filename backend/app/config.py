@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "Sales Inbox Task Router"
+    app_name: str = "Mail Manager"
     environment: str = "development"
 
     candidate_id: str
