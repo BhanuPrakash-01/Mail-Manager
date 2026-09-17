@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.API_URL || 'http://localhost:8000';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export async function fetchStats(runId) {
   const url = runId ? `${API_BASE}/api/stats?run_id=${runId}` : `${API_BASE}/api/stats`;
